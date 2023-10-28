@@ -1,0 +1,245 @@
+#!/bin/bash
+###############################################################################
+
+TF_BIN="${TF_BIN:-$(which terraform)}"
+TF_DIR=".terraform"
+VAR_DIR="vars"
+BACKEND_FILE="remote_backend.tfvars"
+TFVARS="terraform.tfvars"
+TFSECRETS="secrets.tfvars"
+
+###############################################################################
+
+# Files to be created
+NEW_TERRAFORM=$(
+  cat <<'END_HEREDOC'
+provider "aws" {
+  region = var.region
+  default_tags {
+    tags = {
+      environment = var.environment
+      service     = var.service
+    }
+  }
+}
+
+terraform {
+  backend "s3" {}
+  required_version = "= 1.6.2"
+}
+END_HEREDOC
+)
+
+NEW_VARIABLES=$(
+  cat <<'END_HEREDOC'
+variable "service" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
+variable "region" {
+  type = string
+}
+END_HEREDOC
+)
+
+NEW_OUTPUTS=$(
+  cat <<'END_HEREDOC'
+output "service" {
+  description = "service"
+  value = var.service
+}
+
+output "region" {
+  description = "region"
+  value = var.region
+}
+
+output "environment" {
+  description = "environment"
+  value = var.environment
+}
+END_HEREDOC
+)
+
+usage() {
+  local err=${1}
+  cat <<EOF
+
+    $([ -n "${err}" ] && echo "Error: ${err}")
+
+    For creating a new service, run: ${0} create-service
+
+    For running terraform commands, run: ${0} <service> <environment> <region> <action> [OPTIONS]
+
+    Parameters:
+
+      service:      A service name
+
+      environment:  An environment where to execute the script (prd|stg)
+
+      region:       An AWS region where to execute the script
+
+      action:       The terraform action to be executed
+
+    Options:
+
+      Any additional command line switches to be passed on to terraform
+
+    Observations:
+      If plan is given as an action, the environment and region TFVARS will
+      be set for "-var-file".
+
+EOF
+
+  exit 1
+}
+
+create_environment(){
+  [ -d "${SERVICE}/${VAR_DIR}/${ENV}" ] &&
+  echo "Environment already exists" && exit 1
+  mkdir -p "${SERVICE}"/${VAR_DIR}/"${ENV}"
+  touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/${TFSECRETS}
+  touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/${TFVARS}
+  cat <<EOF > "${SERVICE}"/${VAR_DIR}/"${ENV}"/${TFVARS}
+environment = "${ENV}"
+EOF
+}
+
+create_region(){
+  [ -d "${SERVICE}/${VAR_DIR}/${ENV}/${REGION}" ] &&
+  echo "Region already exists" && exit 1
+  mkdir -p "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"
+  touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${TFSECRETS}
+  touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${TFVARS}
+  cat <<EOF > "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${TFVARS}
+region = "${REGION}"
+EOF
+  create_backend
+}
+
+create_backend(){
+  touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${BACKEND_FILE}
+  cat <<EOF > "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${BACKEND_FILE}
+bucket = "${BUCKET}"
+key    = "${SERVICE}/${ENV}/${REGION}/terraform.tfstate"
+region = "${REGION}"
+EOF
+}
+
+create_service() {
+  echo "Enter Service Name (e.g. my-new-service):"
+  read -r SERVICE
+  echo "Enter Environment Name (e.g. stg or prd):"
+  read -r ENV
+  echo "Enter Region Name (e.g. us-east-1 or eu-west-1):"
+  read -r REGION
+  echo "Enter Backend S3 Bucket Name (e.g. my-terraform-bucket):"
+  read -r BUCKET
+  [ -d "${SERVICE}" ] && echo "Service already exists" && exit 1
+  mkdir -p "${SERVICE}"/${VAR_DIR}
+  echo "$NEW_TERRAFORM" > "${SERVICE}"/terraform.tf
+  echo "$NEW_VARIABLES" > "${SERVICE}"/variables.tf
+  echo "$NEW_OUTPUTS" > "${SERVICE}"/outputs.tf
+  touch "${SERVICE}"/${VAR_DIR}/${TFSECRETS}
+  touch "${SERVICE}"/${VAR_DIR}/${TFVARS}
+  cat <<EOF > "${SERVICE}"/${VAR_DIR}/${TFVARS}
+service = "${SERVICE}"
+EOF
+  create_environment
+  create_region
+}
+
+tf_init() {
+  cd "${SERVICE}" && \
+    rm -fr "${SERVICE}"/${TF_DIR:?} && \
+    ${TF_BIN} init \
+    -backend-config ${VAR_DIR}/"${ENV}"/"${REGION}"/${BACKEND_FILE}
+}
+
+gather_vars() {
+  # Global
+  [ -e "${SERVICE}/${VAR_DIR}/${TFVARS}" ] && \
+    VARS_PARAM="${VARS_PARAM} -var-file ${VAR_DIR}/${TFVARS}"
+  [ -e "${SERVICE}/${VAR_DIR}/${TFSECRETS}" ] && \
+    VARS_PARAM="${VARS_PARAM} -var-file ${VAR_DIR}/${TFSECRETS}"
+
+  # Env
+  [ -e "${SERVICE}/${VAR_DIR}/${ENV}/${TFVARS}" ] && \
+    VARS_PARAM="${VARS_PARAM} -var-file ${VAR_DIR}/${ENV}/${TFVARS}"
+  [ -e "${SERVICE}/${VAR_DIR}/${ENV}/${TFSECRETS}" ] && \
+    VARS_PARAM="${VARS_PARAM} -var-file ${VAR_DIR}/${ENV}/${TFSECRETS}"
+
+  # Region
+  [ -e "${SERVICE}/${VAR_DIR}/${ENV}/${REGION}/${TFVARS}" ] && \
+    VARS_PARAM="${VARS_PARAM} -var-file ${VAR_DIR}/${ENV}/${REGION}/${TFVARS}"
+  [ -e "${SERVICE}/${VAR_DIR}/${ENV}/${REGION}/${TFSECRETS}" ] && \
+    VARS_PARAM="${VARS_PARAM} -var-file ${VAR_DIR}/${ENV}/${REGION}/${TFSECRETS}"
+}
+
+if [ ! -e "${TF_BIN}" ]; then
+  echo "Terraform binary not found (${TF_BIN})"
+  exit 1
+fi
+
+# Script arguments
+
+if [ $# -eq 1 ]; then
+  ACTION=${1}
+  [ "${ACTION}" != "create-service" ] && usage "Invalid number of arguments"
+elif [ $# -ge 4 ]; then
+  SERVICE=${1}    ; shift
+  ENV=${1}    ; shift
+  REGION=${1} ; shift
+  ACTION=${1} ; shift
+  [ -z "${ACTION}" ] && usage "Action not defined"
+  [ -z "${ENV}" ]    && usage "Environment not defined"
+  [ -z "${REGION}" ] && usage "Region not defined"
+  [ -z "${SERVICE}" ] && usage "Service not defined"
+  export SERVICE ENV REGION
+  # Check that arguments passed are in actual order, and that the directory
+  # representing the region at the given environment exists
+  [ ! -d "${SERVICE}/${VAR_DIR}/${ENV}/${REGION}" ] && \
+    usage "Directory not found (${SERVICE}/${VAR_DIR}/${ENV}/${REGION})"
+else
+  usage "Invalid number of arguments"
+fi
+
+VARS_PARAM=""
+gather_vars
+
+case ${ACTION} in
+
+  "create-service")
+    create_service
+    ;;
+
+  "test")
+    echo "Service: ${SERVICE}"
+    echo "Environment: ${ENV}"
+    echo "Region: ${REGION}"
+    echo "Action: ${ACTION}"
+    echo "Vars: ${VARS_PARAM}"
+    ;;
+
+  "clean")
+    rm -fr "${SERVICE}"/${TF_DIR:?}
+    ;;
+
+  "init")
+    tf_init
+    ;;
+
+  "apply"|"plan"|"validate"|"refresh"|"import"|"destroy")
+    [ ! -d "${SERVICE}/${TF_DIR}" ] && echo "Terraform not initialized, run init" && exit 1
+    ${TF_BIN} -chdir="${SERVICE}" "${ACTION}" ${VARS_PARAM} "${@}"
+    ;;
+
+  *)
+    ${TF_BIN} "${ACTION}" "${@}"
+    ;;
+
+esac
