@@ -20,14 +20,32 @@ region = "REGION"
 
 ```bash
 $ ./ez-terraform create-service
-Enter Service Name (e.g. my-new-service):
-service-backend
-Enter Environment Name (e.g. stg or prd):
-stg
-Enter Region Name (e.g. us-east-1 or eu-west-1):
-eu-west-1
-Enter Backend S3 Bucket Name (e.g. my-terraform-bucket):
-terraform-s3-tfstates
+Enter Service Name (e.g. my-new-service): service-backend
+Enter Environment Name (e.g. stg or prd): dev
+Enter Region Name (e.g. us-east-1 or eu-west-1): us-east-1
+Enter Backend S3 Bucket Name (e.g. my-terraform-bucket): my-terraform-state-bucket
+
+Creating service: service-backend
+Creating environment: dev - OK
+Creating region: us-east-1 - OK
+Service service-backend created successfully:
+
+    service-backend
+    ├── outputs.tf
+    ├── terraform.tf
+    ├── variables.tf
+    └── vars
+        ├── dev
+        │   ├── secrets.tfvars
+        │   ├── terraform.tfvars
+        │   └── us-east-1
+        │       ├── remote_backend.tfvars
+        │       ├── secrets.tfvars
+        │       └── terraform.tfvars
+        ├── secrets.tfvars
+        └── terraform.tfvars
+
+4 directories, 10 files
 ```
 
 ## Directory Structure
@@ -43,21 +61,21 @@ terraform-s3-tfstates
 │       ├── secrets.tfvars
 │       ├── terraform.tfvars
 │       ├── stg
-│       │   ├── eu-west-1
+│       │   ├── us-east-1
 │       │   │   ├── remote_backend.tfvars
 │       │   │   ├── secrets.tfvars
 │       │   │   └── terraform.tfvars
 │       │   ├── secrets.tfvars
 │       │   └── terraform.tfvars
 │       ├── prd
-│       │   ├── eu-west-1
+│       │   ├── us-east-1
 │       │   │   ├── remote_backend.tfvars
 │       │   │   ├── secrets.tfvars
 │       │   │   └── terraform.tfvars
 │       │   ├── secrets.tfvars
 │       │   └── terraform.tfvars
-│       ├── dev
-│           ├── eu-west-1
+│       └── dev
+│           ├── us-east-1
 │           │   ├── remote_backend.tfvars
 │           │   ├── secrets.tfvars
 │           │   └── terraform.tfvars
@@ -77,17 +95,17 @@ terraform-s3-tfstates
 ### Terraform Plan
 
 ```bash
-./ez-terraform service-backend stg eu-west-1 plan
+./ez-terraform service-backend stg us-east-1 plan
 ```
 
 ### Terraform Apply
 
 ```bash
-./ez-terraform service-backend prd eu-west-1 apply
+./ez-terraform service-backend prd us-east-1 apply
 ```
 
 ### Terraform Init
 
 ```bash
-./ez-terraform service-backend dev eu-west-1 init
+./ez-terraform service-backend dev us-east-1 init
 ```

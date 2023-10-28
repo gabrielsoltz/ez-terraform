@@ -1,16 +1,20 @@
 #!/bin/bash
 ###############################################################################
-
+# ez-terraform
+# An easy way to manage terraform projects
+###############################################################################
+# Basic Variables:
 TF_BIN="${TF_BIN:-$(which terraform)}"
 TF_DIR=".terraform"
 VAR_DIR="vars"
 BACKEND_FILE="remote_backend.tfvars"
 TFVARS="terraform.tfvars"
 TFSECRETS="secrets.tfvars"
-
 ###############################################################################
 
-# Files to be created
+###############################################################################
+# Files for new services
+###############################################################################
 NEW_TERRAFORM=$(
   cat <<'END_HEREDOC'
 provider "aws" {
@@ -64,6 +68,7 @@ output "environment" {
 }
 END_HEREDOC
 )
+###############################################################################
 
 usage() {
   local err=${1}
@@ -96,6 +101,20 @@ usage() {
 EOF
 
   exit 1
+}
+
+banner() {
+  cat <<EOF
+---------------------------------------------
+ez-terraform
+---------------------------------------------
+Service: ${SERVICE}
+Environment: ${ENV}
+Region: ${REGION}
+Action: ${ACTION}
+Variables Files: ${VARS_PARAM}
+---------------------------------------------
+EOF
 }
 
 create_environment(){
@@ -153,7 +172,8 @@ service = "${SERVICE}"
 EOF
   create_environment && \
     create_region && \
-    echo "Service ${SERVICE} created successfully:" && \
+    echo "Service ${SERVICE} created successfully: " && \
+    echo "" && \
     tree "${SERVICE}" && \
     exit 0 || exit 1
 }
@@ -222,28 +242,24 @@ case ${ACTION} in
     create_service
     ;;
 
-  "test")
-    echo "Service: ${SERVICE}"
-    echo "Environment: ${ENV}"
-    echo "Region: ${REGION}"
-    echo "Action: ${ACTION}"
-    echo "Vars: ${VARS_PARAM}"
-    ;;
-
   "clean")
+    banner
     rm -fr "${SERVICE}"/${TF_DIR:?}
     ;;
 
   "init")
+    banner
     tf_init
     ;;
 
   "apply"|"plan"|"validate"|"refresh"|"import"|"destroy")
+    banner
     [ ! -d "${SERVICE}/${TF_DIR}" ] && echo "Terraform not initialized, run init" && exit 1
     ${TF_BIN} -chdir="${SERVICE}" "${ACTION}" ${VARS_PARAM} "${@}"
     ;;
 
   *)
+    banner
     ${TF_BIN} "${ACTION}" "${@}"
     ;;
 
