@@ -101,28 +101,29 @@ EOF
 create_environment(){
   [ -d "${SERVICE}/${VAR_DIR}/${ENV}" ] &&
   echo "Environment already exists" && exit 1
-  mkdir -p "${SERVICE}"/${VAR_DIR}/"${ENV}"
-  touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/${TFSECRETS}
-  touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/${TFVARS}
-  cat <<EOF > "${SERVICE}"/${VAR_DIR}/"${ENV}"/${TFVARS}
+  echo -n "Creating environment: ${ENV}" && \
+    mkdir -p "${SERVICE}"/${VAR_DIR}/"${ENV}" && \
+    touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/${TFSECRETS} && \
+    cat <<EOF > "${SERVICE}"/${VAR_DIR}/"${ENV}"/${TFVARS} &&
 environment = "${ENV}"
 EOF
+  echo " - OK" || exit 1
 }
 
 create_region(){
   [ -d "${SERVICE}/${VAR_DIR}/${ENV}/${REGION}" ] &&
   echo "Region already exists" && exit 1
-  mkdir -p "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"
-  touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${TFSECRETS}
-  touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${TFVARS}
-  cat <<EOF > "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${TFVARS}
+  echo -n "Creating region: ${REGION}" && \
+    mkdir -p "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}" && \
+    touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${TFSECRETS} && \
+    cat <<EOF > "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${TFVARS} &&
 region = "${REGION}"
 EOF
+  echo " - OK" || exit 1
   create_backend
 }
 
 create_backend(){
-  touch "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${BACKEND_FILE}
   cat <<EOF > "${SERVICE}"/${VAR_DIR}/"${ENV}"/"${REGION}"/${BACKEND_FILE}
 bucket = "${BUCKET}"
 key    = "${SERVICE}/${ENV}/${REGION}/terraform.tfstate"
@@ -131,26 +132,30 @@ EOF
 }
 
 create_service() {
-  echo "Enter Service Name (e.g. my-new-service):"
+  echo -n "Enter Service Name (e.g. my-new-service): "
   read -r SERVICE
-  echo "Enter Environment Name (e.g. stg or prd):"
-  read -r ENV
-  echo "Enter Region Name (e.g. us-east-1 or eu-west-1):"
-  read -r REGION
-  echo "Enter Backend S3 Bucket Name (e.g. my-terraform-bucket):"
-  read -r BUCKET
   [ -d "${SERVICE}" ] && echo "Service already exists" && exit 1
-  mkdir -p "${SERVICE}"/${VAR_DIR}
-  echo "$NEW_TERRAFORM" > "${SERVICE}"/terraform.tf
-  echo "$NEW_VARIABLES" > "${SERVICE}"/variables.tf
-  echo "$NEW_OUTPUTS" > "${SERVICE}"/outputs.tf
-  touch "${SERVICE}"/${VAR_DIR}/${TFSECRETS}
-  touch "${SERVICE}"/${VAR_DIR}/${TFVARS}
-  cat <<EOF > "${SERVICE}"/${VAR_DIR}/${TFVARS}
+  echo -n "Enter Environment Name (e.g. stg or prd): "
+  read -r ENV
+  echo -n "Enter Region Name (e.g. us-east-1 or eu-west-1): "
+  read -r REGION
+  echo -n "Enter Backend S3 Bucket Name (e.g. my-terraform-bucket): "
+  read -r BUCKET
+  echo ""
+  echo "Creating service: ${SERVICE}" && \
+    mkdir -p "${SERVICE}"/${VAR_DIR} && \
+    echo "$NEW_TERRAFORM" > "${SERVICE}"/terraform.tf && \
+    echo "$NEW_VARIABLES" > "${SERVICE}"/variables.tf && \
+    echo "$NEW_OUTPUTS" > "${SERVICE}"/outputs.tf && \
+    touch "${SERVICE}"/${VAR_DIR}/${TFSECRETS} && \
+    cat <<EOF > "${SERVICE}"/${VAR_DIR}/${TFVARS} &&
 service = "${SERVICE}"
 EOF
-  create_environment
-  create_region
+  create_environment && \
+    create_region && \
+    echo "Service ${SERVICE} created successfully:" && \
+    tree "${SERVICE}" && \
+    exit 0 || exit 1
 }
 
 tf_init() {
